@@ -73,6 +73,7 @@ export const ADDITIONAL_STRATEGIES = [
   'prompt-injection',
   'retry',
   'rot13',
+  'simba',
   'video',
 ] as const;
 export type AdditionalStrategy = (typeof ADDITIONAL_STRATEGIES)[number];
