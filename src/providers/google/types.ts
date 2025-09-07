@@ -150,7 +150,7 @@ export interface CompletionOptions {
 
     // Live API
     response_modalities?: string[];
-    
+
     // Image generation
     responseModalities?: string[];
 
