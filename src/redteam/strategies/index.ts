@@ -27,7 +27,7 @@ import { addInjections } from './promptInjections';
 import { addRetryTestCases } from './retry';
 import { addRot13 } from './rot13';
 import { addAudioToBase64 } from './simpleAudio';
-import { addImageToBase64 } from './simpleImage';
+import { addImageToBase64, addImageToBase64Basic } from './image';
 import { addVideoToBase64 } from './simpleVideo';
 import { addCompositeTestCases } from './singleTurnComposite';
 
@@ -180,10 +180,19 @@ export const Strategies: Strategy[] = [
   },
   {
     id: 'image',
-    action: async (testCases, injectVar) => {
+    action: async (testCases, injectVar, config) => {
       logger.debug(`Adding image encoding to ${testCases.length} test cases`);
-      const newTestCases = await addImageToBase64(testCases, injectVar);
+      const newTestCases = await addImageToBase64(testCases, injectVar, config);
       logger.debug(`Added ${newTestCases.length} image encoded test cases`);
+      return newTestCases;
+    },
+  },
+  {
+    id: 'image:basic',
+    action: async (testCases, injectVar, config) => {
+      logger.debug(`Adding image encoding (local) to ${testCases.length} test cases`);
+      const newTestCases = await addImageToBase64Basic(testCases, injectVar);
+      logger.debug(`Added ${newTestCases.length} image encoded (local) test cases`);
       return newTestCases;
     },
   },
