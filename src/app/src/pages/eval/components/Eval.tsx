@@ -8,12 +8,16 @@ import useApiConfig from '@app/stores/apiConfig';
 import { callApi } from '@app/utils/api';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
+import {
+  EvalResultsFilterMode,
+  type ResultLightweightWithLabel,
+  type ResultsFile,
+} from '@promptfoo/types';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { io as SocketIOClient } from 'socket.io-client';
 import EmptyState from './EmptyState';
 import ResultsView from './ResultsView';
 import { useResultsViewSettingsStore, useTableStore } from './store';
-import type { ResultLightweightWithLabel, ResultsFile } from '@promptfoo/types';
 import './Eval.css';
 
 interface EvalOptions {
@@ -40,6 +44,8 @@ export default function Eval({ fetchId }: EvalOptions) {
     resetFilters,
     addFilter,
     setIsStreaming,
+    setFilterMode,
+    resetFilterMode,
   } = useTableStore();
 
   const { setInComparisonMode, setComparisonEvalIds } = useResultsViewSettingsStore();
@@ -80,11 +86,12 @@ export default function Eval({ fetchId }: EvalOptions) {
       try {
         setEvalId(id);
 
-        const { filters } = useTableStore.getState();
+        const { filters, filterMode } = useTableStore.getState();
 
         const data = await fetchEvalData(id, {
           skipSettingEvalId: true,
           skipLoadingState: isBackgroundUpdate,
+          filterMode,
           filters: Object.values(filters.values).filter((filter) =>
             filter.type === 'metadata'
               ? Boolean(filter.value && filter.field)
@@ -130,14 +137,57 @@ export default function Eval({ fetchId }: EvalOptions) {
 
     // Check for a `plugin` param in the URL; we support filtering on plugins via the URL which
     // enables the "View Logs" functionality in Vulnerability reports.
-    const pluginParam = searchParams.get('plugin');
+    const pluginParams = searchParams.getAll('plugin');
 
-    if (pluginParam) {
-      addFilter({
-        type: 'plugin',
-        operator: 'equals',
-        value: pluginParam,
+    // Check for >=1 metric params in the URL.
+    const metricParams = searchParams.getAll('metric');
+
+    // Check for >=1 policyId params in the URL.
+    const policyIdParams = searchParams.getAll('policy');
+
+    // Check for a `mode` param in the URL.
+    const modeParam = searchParams.get('mode');
+
+    if (pluginParams.length > 0) {
+      pluginParams.forEach((pluginParam) => {
+        addFilter({
+          type: 'plugin',
+          operator: 'equals',
+          value: pluginParam,
+          logicOperator: 'or',
+        });
       });
+    }
+
+    if (metricParams.length > 0) {
+      metricParams.forEach((metricParam) => {
+        addFilter({
+          type: 'metric',
+          operator: 'equals',
+          value: metricParam,
+          logicOperator: 'or',
+        });
+      });
+    }
+
+    if (policyIdParams.length > 0) {
+      policyIdParams.forEach((policyId) => {
+        addFilter({
+          type: 'policy',
+          operator: 'equals',
+          value: policyId,
+          logicOperator: 'or',
+        });
+      });
+    }
+
+    // If a mode param is provided, set the filter mode to the provided value.
+    // Otherwise, reset the filter mode to ensure that the filter mode from the previously viewed eval
+    // is not applied (again, because Zustand is a global store).
+    if (modeParam && EvalResultsFilterMode.safeParse(modeParam).success) {
+      setFilterMode(modeParam as EvalResultsFilterMode);
+    } else {
+      resetFilterMode();
     }
 
     if (fetchId) {

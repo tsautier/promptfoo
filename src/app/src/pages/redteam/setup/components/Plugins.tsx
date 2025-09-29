@@ -10,7 +10,7 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import RemoveIcon from '@mui/icons-material/Remove';
 import SearchIcon from '@mui/icons-material/Search';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
-import { Grid2 } from '@mui/material';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -41,6 +41,9 @@ import {
   FOUNDATION_PLUGINS,
   GUARDRAILS_EVALUATION_PLUGINS,
   HARM_PLUGINS,
+  HUGGINGFACE_GATED_PLUGINS,
+  ISO_42001_MAPPING,
+  MCP_PLUGINS,
   MITRE_ATLAS_MAPPING,
   NIST_AI_RMF_MAPPING,
   OWASP_API_TOP_10_MAPPING,
@@ -99,6 +102,9 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
         .filter((id) => id !== 'policy' && id !== 'intent') as Plugin[],
     );
   });
+
+  // Track if user has interacted to prevent config updates from overriding user selections
+  const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [pluginConfig, setPluginConfig] = useState<LocalPluginConfig>(() => {
@@ -172,8 +178,28 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
     }
   }, [debouncedPlugins]);
 
+  // Sync selectedPlugins from config only on initial load or when user hasn't interacted
+  useEffect(() => {
+    if (!hasUserInteracted) {
+      const configPlugins = new Set(
+        config.plugins
+          .map((plugin) => (typeof plugin === 'string' ? plugin : plugin.id))
+          .filter((id) => id !== 'policy' && id !== 'intent') as Plugin[],
+      );
+
+      // Only update if the sets are actually different to avoid unnecessary re-renders
+      if (
+        configPlugins.size !== selectedPlugins.size ||
+        !Array.from(configPlugins).every((plugin) => selectedPlugins.has(plugin))
+      ) {
+        setSelectedPlugins(configPlugins);
+      }
+    }
+  }, [config.plugins, hasUserInteracted, selectedPlugins]);
+
   const handlePluginToggle = useCallback(
     (plugin: Plugin) => {
+      setHasUserInteracted(true);
       setSelectedPlugins((prev) => {
         const newSet = new Set(prev);
 
@@ -220,6 +246,7 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
       feature: 'redteam_config_plugins_preset_selected',
       preset: preset.name,
     });
+    setHasUserInteracted(true);
     if (preset.name === 'Custom') {
       setIsCustomMode(true);
     } else {
@@ -341,6 +368,10 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
       plugins: new Set(GUARDRAILS_EVALUATION_PLUGINS),
     },
     {
+      name: 'MCP',
+      plugins: new Set(MCP_PLUGINS),
+    },
+    {
       name: 'Harmful',
       plugins: new Set(Object.keys(HARM_PLUGINS) as Plugin[]),
     },
@@ -367,6 +398,10 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
     {
       name: 'EU AI Act',
       plugins: new Set(Object.values(EU_AI_ACT_MAPPING).flatMap((v) => v.plugins)),
+    },
+    {
+      name: 'ISO 42001',
+      plugins: new Set(Object.values(ISO_42001_MAPPING).flatMap((v) => v.plugins)),
     },
   ];
 
@@ -591,6 +626,24 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
       p.plugins.size === selectedPlugins.size,
   );
 
+  // Check if user has selected all or most plugins
+  const hasSelectedMostPlugins = useMemo(() => {
+    // Get all unique plugins from risk categories (excluding intent and policy)
+    const allAvailablePlugins = new Set<Plugin>();
+    Object.values(riskCategories).forEach((plugins) => {
+      plugins.forEach((plugin) => {
+        if (plugin !== 'intent' && plugin !== 'policy') {
+          allAvailablePlugins.add(plugin);
+        }
+      });
+    });
+
+    const totalAvailable = allAvailablePlugins.size;
+    const totalSelected = selectedPlugins.size;
+    // Show warning if more than 80% of plugins are selected or all plugins are selected
+    return totalSelected >= totalAvailable * 0.8 || totalSelected === totalAvailable;
+  }, [selectedPlugins]);
+
   return (
     <PageWrapper
       title="Plugins"
@@ -621,6 +674,38 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
         !isConfigValid() || !hasAnyPluginsConfigured() ? getNextButtonTooltip() : undefined
       }
     >
+      {/* Warning banner when all/most plugins are selected - full width sticky */}
+      {hasSelectedMostPlugins && (
+        <Alert
+          severity="warning"
+          icon={<WarningAmberIcon />}
+          sx={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 9,
+            margin: -3,
+            marginBottom: 3,
+            padding: theme.spacing(2, 3),
+            borderRadius: 0,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            '& .MuiAlert-message': {
+              width: '100%',
+            },
+          }}
+        >
+          <Box>
+            <Typography variant="body2" fontWeight="bold" gutterBottom>
+              Performance Warning: Too Many Plugins Selected
+            </Typography>
+            <Typography variant="body2">
+              Selecting many plugins is usually not efficient and will significantly increase
+              evaluation time and cost. It's recommended to use the preset configurations or select
+              only the plugins specifically needed for your use case.
+            </Typography>
+          </Box>
+        </Alert>
+      )}
+
       <ErrorBoundary FallbackComponent={ErrorFallback}>
         <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>
           {/* Main content */}
@@ -638,32 +723,24 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
                 Presets
               </Typography>
 
-              <Grid2 container spacing={2} sx={{ mb: 3 }}>
+              <Grid spacing={2} container sx={{ mb: 3 }}>
                 {presets.map((preset) => {
                   const isSelected =
                     preset.name === 'Custom'
                       ? isCustomMode
                       : preset.name === currentlySelectedPreset?.name;
                   return (
-                    <Grid
-                      item
-                      xs={12}
-                      sm={6}
-                      md={4}
-                      lg={3}
-                      key={preset.name}
-                      sx={{ minWidth: '200px' }}
-                    >
+                    <Box key={preset.name}>
                       <PresetCard
                         name={preset.name}
                         description={PLUGIN_PRESET_DESCRIPTIONS[preset.name] || ''}
                         isSelected={isSelected}
                         onClick={() => handlePresetSelect(preset)}
                       />
-                    </Grid>
+                    </Box>
                   );
                 })}
-              </Grid2>
+              </Grid>
             </Box>
 
             {/* Search and Filter section */}
@@ -738,6 +815,7 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
               <Box
                 component="span"
                 onClick={() => {
+                  setHasUserInteracted(true);
                   filteredPlugins.forEach(({ plugin }) => {
                     if (!selectedPlugins.has(plugin)) {
                       handlePluginToggle(plugin);
@@ -750,6 +828,7 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
               <Box
                 component="span"
                 onClick={() => {
+                  setHasUserInteracted(true);
                   filteredPlugins.forEach(({ plugin }) => {
                     if (selectedPlugins.has(plugin)) {
                       handlePluginToggle(plugin);
@@ -767,23 +846,12 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
                 <Paper
                   key={plugin}
                   variant="outlined"
-                  onClick={(e) => {
-                    // Don't toggle if clicking on checkbox, buttons, or other interactive elements
-                    if (
-                      e.target instanceof Element &&
-                      (e.target.closest('input[type="checkbox"]') ||
-                        e.target.closest('button') ||
-                        e.target.closest('[role="checkbox"]'))
-                    ) {
-                      return;
-                    }
-                    handlePluginToggle(plugin);
-                  }}
+                  onClick={() => handlePluginToggle(plugin)}
                   sx={{
-                    border: '2px solid',
+                    border: '1px solid',
                     borderColor: (() => {
                       if (selectedPlugins.has(plugin)) {
-                        // Show red border if plugin is selected but missing required config
+                        // Show red border if missing required config
                         if (
                           PLUGINS_REQUIRING_CONFIG.includes(plugin) &&
                           !isPluginConfigured(plugin)
@@ -792,9 +860,10 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
                         }
                         return 'primary.main';
                       }
-                      return 'divider';
+                      return theme.palette.divider;
                     })(),
-                    borderRadius: 2,
+                    borderRadius: 1,
+                    cursor: 'pointer',
                     bgcolor: (() => {
                       if (selectedPlugins.has(plugin)) {
                         // Show red background if plugin is selected but missing required config
@@ -856,6 +925,9 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
                       onChange={(e) => {
                         e.stopPropagation();
                         handlePluginToggle(plugin);
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
                       }}
                       color="primary"
                       size="small"
@@ -944,6 +1016,25 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
                         >
                           no strategies
                         </Typography>
+                      )}
+                      {HUGGINGFACE_GATED_PLUGINS.includes(plugin as any) && (
+                        <Tooltip title="This dataset requires a HuggingFace API key to access. Set HF_TOKEN environment variable.">
+                          <Typography
+                            variant="caption"
+                            sx={(theme) => ({
+                              fontSize: '0.7rem',
+                              color: 'warning.main',
+                              fontWeight: 500,
+                              backgroundColor: alpha(theme.palette.warning.main, 0.08),
+                              px: 0.5,
+                              py: 0.25,
+                              borderRadius: 0.5,
+                              border: `1px solid ${alpha(theme.palette.warning.main, 0.3)}`,
+                            })}
+                          >
+                            🤗 API key required
+                          </Typography>
+                        </Tooltip>
                       )}
                     </Box>
                     <Typography
@@ -1381,18 +1472,16 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
                       Generating test case...
                     </Typography>
                   </Box>
-                ) : generatedTestCase ? (
-                  <Box>
-                    {/* Context first as an alert */}
-                    {generatedTestCase.context && (
-                      <Alert severity="info" sx={{ mb: 3, alignItems: 'center' }}>
-                        {generatedTestCase.context}
-                      </Alert>
-                    )}
-
-                    {/* Generated Prompt */}
-                    <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
-                      Generated Prompt:
+                ) : generatedTestCase && testCaseDialogMode === 'result' ? (
+                  <Box sx={{ pt: 2 }}>
+                    <Alert severity="info" sx={{ mb: 3, alignItems: 'center' }}>
+                      <Typography variant="body2">
+                        This is a sample test case generated for the <code>{generatingPlugin}</code>{' '}
+                        plugin. Fine tune it by adjusting your application details.
+                      </Typography>
+                    </Alert>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Test Case:
                     </Typography>
                     <Box
                       sx={{
@@ -1411,10 +1500,11 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
                     </Box>
                   </Box>
                 ) : null}
-
-                {/* Documentation link */}
+              </DialogContent>
+              <DialogActions>
+                {/* Documentation link in footer */}
                 {generatingPlugin && hasSpecificPluginDocumentation(generatingPlugin) && (
-                  <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                  <Box sx={{ flex: 1, mr: 2 }}>
                     <Link
                       href={getPluginDocumentationUrl(generatingPlugin)}
                       target="_blank"
@@ -1428,21 +1518,19 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
                         '&:hover': {
                           textDecoration: 'underline',
                         },
+                        paddingLeft: 2,
                       }}
                     >
-                      Learn more about the{' '}
+                      Learn more about{' '}
                       {displayNameOverrides[generatingPlugin] ||
                         categoryAliases[generatingPlugin] ||
-                        generatingPlugin}{' '}
-                      plugin
+                        generatingPlugin}
                       <Box component="span" sx={{ fontSize: '0.75rem' }}>
                         ↗
                       </Box>
                     </Link>
                   </Box>
                 )}
-              </DialogContent>
-              <DialogActions>
                 <Button
                   onClick={() => {
                     setTestCaseDialogOpen(false);
@@ -1592,6 +1680,7 @@ export default function Plugins({ onNext, onBack }: PluginsProps) {
                     size="small"
                     fullWidth
                     onClick={() => {
+                      setHasUserInteracted(true);
                       selectedPlugins.forEach((plugin) => handlePluginToggle(plugin));
                     }}
                     sx={{ fontSize: '0.875rem' }}

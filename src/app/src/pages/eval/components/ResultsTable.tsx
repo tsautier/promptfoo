@@ -2,12 +2,6 @@ import React, { useEffect, useRef } from 'react';
 
 import ErrorBoundary from '@app/components/ErrorBoundary';
 import { useToast } from '@app/hooks/useToast';
-import {
-  type EvaluateTable,
-  type EvaluateTableOutput,
-  type EvaluateTableRow,
-  type FilterMode,
-} from '@app/pages/eval/components/types';
 import { callApi } from '@app/utils/api';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
@@ -25,6 +19,12 @@ import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { FILE_METADATA_KEY } from '@promptfoo/constants';
+import {
+  type EvalResultsFilterMode,
+  type EvaluateTable,
+  type EvaluateTableOutput,
+  type EvaluateTableRow,
+} from '@promptfoo/types';
 import invariant from '@promptfoo/util/invariant';
 import {
   createColumnHelper,
@@ -37,6 +37,7 @@ import ReactMarkdown from 'react-markdown';
 import { Link, useNavigate } from 'react-router-dom';
 import remarkGfm from 'remark-gfm';
 import CustomMetrics from './CustomMetrics';
+import CustomMetricsDialog from './CustomMetricsDialog';
 import EvalOutputCell from './EvalOutputCell';
 import EvalOutputPromptDialog from './EvalOutputPromptDialog';
 import MarkdownErrorBoundary from './MarkdownErrorBoundary';
@@ -48,6 +49,7 @@ import type { TruncatedTextProps } from './TruncatedText';
 import './ResultsTable.css';
 
 import ButtonGroup from '@mui/material/ButtonGroup';
+import { isEncodingStrategy } from '@promptfoo/redteam/constants/strategies';
 import { usePassingTestCounts, usePassRates, useTestCounts } from './hooks';
 
 const VARIABLE_COLUMN_SIZE_PX = 200;
@@ -95,9 +97,9 @@ function TableHeader({
       {expandedText && (
         <>
           <Tooltip title="View prompt">
-            <span className="action" onClick={handlePromptOpen}>
+            <button className="action" onClick={handlePromptOpen}>
               🔎
-            </span>
+            </button>
           </Tooltip>
           {promptOpen && (
             <EvalOutputPromptDialog
@@ -125,13 +127,11 @@ interface ResultsTableProps {
   maxTextLength: number;
   columnVisibility: VisibilityState;
   wordBreak: 'break-word' | 'break-all';
-  filterMode: FilterMode;
+  filterMode: EvalResultsFilterMode;
   failureFilter: { [key: string]: boolean };
   debouncedSearchText?: string;
   showStats: boolean;
   onFailureFilterToggle: (columnId: string, checked: boolean) => void;
-  onSearchTextChange: (text: string) => void;
-  setFilterMode: (mode: FilterMode) => void;
   zoom: number;
 }
 
@@ -196,6 +196,7 @@ function ResultsTableHeader({
               return (
                 <th
                   key={header.id}
+                  tabIndex={0}
                   colSpan={header.colSpan}
                   style={{
                     width: header.getSize(),
@@ -230,8 +231,6 @@ function ResultsTable({
   debouncedSearchText,
   showStats,
   onFailureFilterToggle,
-  onSearchTextChange,
-  setFilterMode,
   zoom,
 }: ResultsTableProps) {
   const {
@@ -244,7 +243,7 @@ function ResultsTable({
     fetchEvalData,
     isFetching,
     filters,
-    addFilter,
+    setFilterMode,
   } = useTableStore();
   const { inComparisonMode, comparisonEvalIds } = useResultsViewSettingsStore();
 
@@ -253,6 +252,10 @@ function ResultsTable({
 
   invariant(table, 'Table should be defined');
   const { head, body } = table;
+
+  const isRedteam = React.useMemo(() => {
+    return config?.redteam !== undefined;
+  }, [config?.redteam]);
 
   const visiblePromptCount = React.useMemo(
     () => head.prompts.filter((_, idx) => columnVisibility[`Prompt ${idx + 1}`] !== false).length,
@@ -453,11 +456,11 @@ function ResultsTable({
   // Add a ref to track the current evalId to compare with new values
   const previousEvalIdRef = useRef<string | null>(null);
 
-  // Reset pagination when evalId changes
+  // Reset pagination when evalId changes. Do not mark previousEvalIdRef here to
+  // allow the fetch effect to skip the first fetch after an eval switch.
   React.useEffect(() => {
     if (evalId !== previousEvalIdRef.current) {
       setPagination({ pageIndex: 0, pageSize: pagination.pageSize });
-      previousEvalIdRef.current = evalId;
 
       // Don't fetch here - the parent component (Eval.tsx) is responsible
       // for the initial data load when changing evalId
@@ -539,9 +542,7 @@ function ResultsTable({
               ),
               cell: (info: CellContext<EvaluateTableRow, string>) => {
                 let value: string | object = info.getValue();
-                const originalValue = value; // Store original value for tooltip
-                let isInjected = false;
-
+                const _originalValue = value; // Store original value for tooltip
                 const row = info.row.original;
 
                 // For red team evals, show the final injected prompt for the configured inject variable
@@ -553,7 +554,6 @@ function ResultsTable({
                     if (output?.metadata?.redteamFinalPrompt) {
                       // Replace the original prompt with the injected version
                       value = output.metadata.redteamFinalPrompt;
-                      isInjected = true;
                       break;
                     }
                   }
@@ -636,31 +636,39 @@ function ResultsTable({
                   <TruncatedText text={value} maxLength={maxTextLength} />
                 );
 
-                // If this is an injected value, wrap in tooltip showing original
-                if (isInjected && typeof originalValue === 'string') {
+                // Determine if we should show original text (decoded) even without redteamFinalPrompt
+                const testMetadata = (row as any)?.test?.metadata || {};
+                const metadataOriginal =
+                  typeof testMetadata.originalText === 'string'
+                    ? testMetadata.originalText
+                    : undefined;
+                const strategyId = testMetadata.strategyId;
+                const shouldShowOriginal =
+                  varName === injectVarName &&
+                  isEncodingStrategy(strategyId) &&
+                  Boolean(metadataOriginal);
+
+                // Show original text for encoding strategies
+                if (shouldShowOriginal) {
+                  const originalForDisplay = metadataOriginal || '';
                   return (
                     <div className="cell" data-capture="true">
-                      <Tooltip
-                        title={
-                          <div style={{ maxWidth: 500, whiteSpace: 'pre-wrap' }}>
-                            <strong>Original Attack:</strong>
-                            <br />
-                            {originalValue}
-                          </div>
-                        }
-                        placement="top"
-                        arrow
-                      >
-                        <div
-                          style={{
-                            cursor: 'help',
-                            borderBottom: '1px dashed #888',
-                            paddingBottom: '2px',
+                      {cellContent}
+                      {originalForDisplay && String(originalForDisplay) !== String(value) && (
+                        <Box
+                          sx={{
+                            marginTop: '6px',
+                            color: 'text.secondary',
+                            fontSize: '0.8em',
                           }}
                         >
-                          {cellContent}
-                        </div>
-                      </Tooltip>
+                          <strong>Original (decoded):</strong>{' '}
+                          <TruncatedText
+                            text={String(originalForDisplay)}
+                            maxLength={maxTextLength}
+                          />
+                        </Box>
+                      )}
                     </div>
                   );
                 }
@@ -721,37 +729,6 @@ function ResultsTable({
     return totals;
   }, [table?.head?.prompts, table?.body]);
 
-  const handleMetricFilterClick = React.useCallback(
-    (metric: string | null) => {
-      if (!metric) {
-        return;
-      }
-
-      const filter = {
-        type: 'metric' as const,
-        operator: 'equals' as const,
-        value: metric,
-        logicOperator: 'or' as const,
-      };
-
-      // If this filter is already applied, do not re-apply it.
-      if (
-        Object.values(filters.values).find(
-          (f) =>
-            f.type === filter.type &&
-            f.value === filter.value &&
-            f.operator === filter.operator &&
-            f.logicOperator === filter.logicOperator,
-        )
-      ) {
-        return;
-      }
-
-      addFilter(filter);
-    },
-    [addFilter, filters.values],
-  );
-
   const promptColumns = React.useMemo(() => {
     return [
       columnHelper.group({
@@ -767,6 +744,12 @@ function ResultsTable({
 
               const details = showStats ? (
                 <div className="prompt-detail collapse-hidden">
+                  {prompt.metrics?.tokenUsage?.numRequests !== undefined && (
+                    <div>
+                      <strong>{isRedteam ? 'Probes:' : 'Requests:'}</strong>{' '}
+                      {prompt.metrics.tokenUsage.numRequests}
+                    </div>
+                  )}
                   {numAsserts[idx] ? (
                     <div>
                       <strong>Asserts:</strong> {numGoodAsserts[idx]}/{numAsserts[idx]} passed
@@ -778,8 +761,11 @@ function ResultsTable({
                       <Tooltip
                         title={`Average: $${Intl.NumberFormat(undefined, {
                           minimumFractionDigits: 1,
-                          maximumFractionDigits: prompt.metrics.cost / testCounts[idx] >= 1 ? 2 : 4,
-                        }).format(prompt.metrics.cost / testCounts[idx])} per test`}
+                          maximumFractionDigits:
+                            testCounts[idx] && prompt.metrics.cost / testCounts[idx] >= 1 ? 2 : 4,
+                        }).format(
+                          testCounts[idx] ? prompt.metrics.cost / testCounts[idx] : 0,
+                        )} per test`}
                       >
                         <span style={{ cursor: 'help' }}>
                           $
@@ -805,7 +791,9 @@ function ResultsTable({
                       <strong>Avg Tokens:</strong>{' '}
                       {Intl.NumberFormat(undefined, {
                         maximumFractionDigits: 0,
-                      }).format(prompt.metrics.tokenUsage.total / testCounts[idx])}
+                      }).format(
+                        testCounts[idx] ? prompt.metrics.tokenUsage.total / testCounts[idx] : 0,
+                      )}
                     </div>
                   ) : null}
                   {prompt.metrics?.totalLatencyMs ? (
@@ -813,7 +801,9 @@ function ResultsTable({
                       <strong>Avg Latency:</strong>{' '}
                       {Intl.NumberFormat(undefined, {
                         maximumFractionDigits: 0,
-                      }).format(prompt.metrics.totalLatencyMs / testCounts[idx])}{' '}
+                      }).format(
+                        testCounts[idx] ? prompt.metrics.totalLatencyMs / testCounts[idx] : 0,
+                      )}{' '}
                       ms
                     </div>
                   ) : null}
@@ -894,8 +884,7 @@ function ResultsTable({
                           lookup={prompt.metrics.namedScores}
                           counts={prompt.metrics.namedScoresCount}
                           metricTotals={metricTotals}
-                          onSearchTextChange={onSearchTextChange}
-                          onMetricFilter={handleMetricFilterClick}
+                          onShowMore={() => setCustomMetricsDialogOpen(true)}
                         />
                       </Box>
                     ) : null}
@@ -958,7 +947,7 @@ function ResultsTable({
                     showStats={showStats}
                     evaluationId={evalId || undefined}
                     testCaseId={info.row.original.test?.metadata?.testCaseId || output.id}
-                    onMetricFilter={handleMetricFilterClick}
+                    isRedteam={isRedteam}
                   />
                 </ErrorBoundary>
               ) : (
@@ -988,7 +977,6 @@ function ResultsTable({
     debouncedSearchText,
     showStats,
     filters.appliedCount,
-    handleMetricFilterClick,
     passRates,
     passingTestCounts,
     testCounts,
@@ -1174,6 +1162,8 @@ function ResultsTable({
     };
   }, []);
 
+  const [customMetricsDialogOpen, setCustomMetricsDialogOpen] = React.useState(false);
+
   return (
     // NOTE: It's important that the JSX Fragment is the top-level element within the DOM tree
     // of this component. This ensures that the pagination footer is always pinned to the bottom
@@ -1195,9 +1185,7 @@ function ResultsTable({
             <Typography variant="body1">No results found for the current filters.</Typography>
           </Box>
         )}
-
       <Box sx={{ height: '1rem' }} />
-
       <ResultsTableHeader
         reactTable={reactTable}
         tableWidth={tableWidth}
@@ -1208,7 +1196,6 @@ function ResultsTable({
         setStickyHeader={setStickyHeader}
         zoom={zoom}
       />
-
       <div
         id="results-table-container"
         style={{
@@ -1273,6 +1260,30 @@ function ResultsTable({
                       const imgSrc = value.startsWith('data:')
                         ? value
                         : `data:image/jpeg;base64,${value}`;
+
+                      // If this is a variable column for the inject var, try to show the original image text
+                      let originalImageText: string | undefined;
+                      const columnId = String(cell.column.id);
+                      const match = columnId.match(/^Variable (\d+)$/);
+                      if (match) {
+                        const varIdx = Number(match[1]) - 1;
+                        const injectVarName = config?.redteam?.injectVar || 'prompt';
+                        const varNameForCol = head.vars[varIdx];
+                        if (varNameForCol === injectVarName) {
+                          const testMeta: any = (row.original as any)?.test?.metadata || {};
+                          const fromMeta =
+                            typeof testMeta.originalText === 'string'
+                              ? testMeta.originalText
+                              : undefined;
+                          const testVars: any = (row.original as any)?.test?.vars || {};
+                          const fromVars =
+                            typeof testVars.image_text === 'string'
+                              ? (testVars.image_text as string)
+                              : undefined;
+                          originalImageText = fromVars || fromMeta;
+                        }
+                      }
+
                       cellContent = (
                         <>
                           <img
@@ -1298,12 +1309,28 @@ function ResultsTable({
                               />
                             </div>
                           )}
+                          {originalImageText ? (
+                            <Box
+                              sx={{
+                                marginTop: '6px',
+                                color: 'text.secondary',
+                                fontSize: '0.8em',
+                              }}
+                            >
+                              <strong>Original (image text):</strong>{' '}
+                              <TruncatedText
+                                text={String(originalImageText)}
+                                maxLength={maxTextLength}
+                              />
+                            </Box>
+                          ) : null}
                         </>
                       );
                     }
 
                     return (
                       <td
+                        tabIndex={0}
                         key={cell.id}
                         style={{
                           width: cell.column.getSize(),
@@ -1320,7 +1347,6 @@ function ResultsTable({
           </tbody>
         </table>
       </div>
-
       <Box
         className="pagination"
         px={2}
@@ -1446,7 +1472,7 @@ function ResultsTable({
               slotProps={{
                 htmlInput: {
                   min: 1,
-                  max: pageCount,
+                  max: pageCount || 1,
                 },
               }}
               disabled={pageCount === 1}
@@ -1484,6 +1510,10 @@ function ResultsTable({
           </ButtonGroup>
         </Box>
       </Box>
+      <CustomMetricsDialog
+        open={customMetricsDialogOpen}
+        onClose={() => setCustomMetricsDialogOpen(false)}
+      />
     </>
   );
 }
