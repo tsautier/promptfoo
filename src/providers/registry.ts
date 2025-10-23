@@ -1224,9 +1224,9 @@ export const providerMap: ProviderFactory[] = [
   {
     test: (providerPath: string) => providerPath === 'promptfoo:redteam:simba',
     create: async (
-      providerPath: string,
+      _providerPath: string,
       providerOptions: ProviderOptions,
-      context: LoadApiProviderContext,
+      _context: LoadApiProviderContext,
     ) => {
       return new RedteamSimbaProvider(providerOptions.config);
     },
