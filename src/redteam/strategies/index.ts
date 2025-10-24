@@ -32,6 +32,7 @@ import { addAudioToBase64 } from './simpleAudio';
 import { addImageToBase64 } from './simpleImage';
 import { addVideoToBase64 } from './simpleVideo';
 import { addCompositeTestCases } from './singleTurnComposite';
+import { ADVANCED_REDTEAM_AGENT_DISPLAY_NAME } from '../constants/advancedRedteamAgent';
 
 import type { RedteamStrategyObject, TestCase } from '../../types/index';
 import type { Strategy } from './types';
@@ -285,9 +286,13 @@ export const Strategies: Strategy[] = [
   {
     id: 'simba',
     action: async (testCases, injectVar, config) => {
-      logger.debug(`Adding Simba test cases to ${testCases.length} test cases`);
+      logger.debug(
+        `Adding ${ADVANCED_REDTEAM_AGENT_DISPLAY_NAME} test cases to ${testCases.length} test cases`,
+      );
       const newTestCases = await addSimbaTestCases(testCases, injectVar, config);
-      logger.debug(`Added ${newTestCases.length} Simba test cases`);
+      logger.debug(
+        `Added ${newTestCases.length} ${ADVANCED_REDTEAM_AGENT_DISPLAY_NAME} test cases`,
+      );
       return newTestCases;
     },
   },
