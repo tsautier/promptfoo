@@ -2,7 +2,7 @@ import type { Plugin } from './plugins';
 import type { Strategy } from './strategies';
 
 export const subCategoryDescriptions: Record<Plugin | Strategy, string> = {
-  'advanced-redteam-agent': `Simulates a human red teamer with planning, adversarial reasoning, and dynamic attacks`,
+  simba: `Simulates a human red teamer with planning, adversarial reasoning, and dynamic attacks`,
   ['agentic:memory-poisoning']: 'Tests whether an agent is vulnerable to memory poisoning attacks',
   aegis: "Tests content safety handling using NVIDIA's Aegis dataset",
   'ascii-smuggling': 'Tests vulnerability to Unicode tag-based instruction smuggling attacks',
@@ -159,7 +159,7 @@ export const subCategoryDescriptions: Record<Plugin | Strategy, string> = {
 
 // These names are displayed in risk cards and in the table
 export const displayNameOverrides: Record<Plugin | Strategy, string> = {
-  'advanced-redteam-agent': 'Advanced Redteam Agent',
+  simba: 'Simba Red Team Agent',
   ['agentic:memory-poisoning']: 'Agentic Memory Poisoning',
   aegis: 'Aegis Dataset',
   'ascii-smuggling': 'ASCII Smuggling',
@@ -827,7 +827,7 @@ export const pluginDescriptions: Record<Plugin, string> = {
 };
 
 export const strategyDescriptions: Record<Strategy, string> = {
-  'advanced-redteam-agent': `Simulates a human red teamer with planning, adversarial reasoning, and dynamic attacks`,
+  simba: `Simulates a human red teamer with planning, adversarial reasoning, and dynamic attacks`,
   audio: 'Tests detection and handling of audio-based malicious payloads',
   'authoritative-markup-injection':
     'Tests detection and handling of authoritative markup injection attacks',
@@ -866,7 +866,7 @@ export const strategyDescriptions: Record<Strategy, string> = {
 };
 
 export const strategyDisplayNames: Record<Strategy, string> = {
-  'advanced-redteam-agent': 'Advanced Redteam Agent',
+  simba: 'Simba Red Team Agent',
   audio: 'Audio',
   'authoritative-markup-injection': 'Authoritative Markup Injection',
   base64: 'Base64 Encoding',

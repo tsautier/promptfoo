@@ -7,7 +7,7 @@ import { isJavascriptFile } from '../../util/fileExtensions';
 import { safeJoin } from '../../util/pathUtils';
 import { strategyDisplayNames } from '../constants';
 import { isCustomStrategy } from '../constants/strategies';
-import { addAdvancedRedteamAgentTestCases } from './advancedRedteamAgent';
+import { addSimbaTestCases } from './simba';
 import { addBase64Encoding } from './base64';
 import { addBestOfNTestCases } from './bestOfN';
 import { addCitationTestCases } from './citation';
@@ -284,15 +284,13 @@ export const Strategies: Strategy[] = [
     },
   },
   {
-    id: 'advanced-redteam-agent',
+    id: 'simba',
     action: async (testCases, injectVar, config) => {
       logger.debug(
-        `Adding ${strategyDisplayNames['advanced-redteam-agent']} test cases to ${testCases.length} test cases`,
+        `Adding ${strategyDisplayNames.simba} test cases to ${testCases.length} test cases`,
       );
-      const newTestCases = await addAdvancedRedteamAgentTestCases(testCases, injectVar, config);
-      logger.debug(
-        `Added ${newTestCases.length} ${strategyDisplayNames['advanced-redteam-agent']} test cases`,
-      );
+      const newTestCases = await addSimbaTestCases(testCases, injectVar, config);
+      logger.debug(`Added ${newTestCases.length} ${strategyDisplayNames.simba} test cases`);
       return newTestCases;
     },
   },
