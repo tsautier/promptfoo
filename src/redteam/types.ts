@@ -209,6 +209,7 @@ export interface SavedRedteamConfig {
   extensions?: string[];
   numTests?: number;
   maxConcurrency?: number;
+  language?: string | string[];
   applicationDefinition: {
     purpose?: string;
     features?: string;

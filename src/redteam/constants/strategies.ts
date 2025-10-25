@@ -68,7 +68,6 @@ export const ADDITIONAL_STRATEGIES = [
   'math-prompt',
   'mischievous-user',
   'morse',
-  'multilingual',
   'piglatin',
   'prompt-injection',
   'retry',
@@ -95,7 +94,6 @@ export type Strategy = (typeof ALL_STRATEGIES)[number];
 
 export const CONFIGURABLE_STRATEGIES = [
   'layer',
-  'multilingual',
   'best-of-n',
   'goat',
   'crescendo',

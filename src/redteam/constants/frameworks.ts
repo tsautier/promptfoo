@@ -224,7 +224,6 @@ export const OWASP_LLM_RED_TEAM_MAPPING: Record<
       'goat',
       'prompt-injection',
       'best-of-n',
-      'multilingual',
     ],
   },
 
@@ -273,15 +272,7 @@ export const OWASP_LLM_RED_TEAM_MAPPING: Record<
       'indirect-prompt-injection',
       'hijacking',
     ],
-    strategies: [
-      'jailbreak',
-      'jailbreak:tree',
-      'jailbreak:composite',
-      'crescendo',
-      'goat',
-      'multilingual',
-      'gcg',
-    ],
+    strategies: ['jailbreak', 'jailbreak:tree', 'jailbreak:composite', 'crescendo', 'goat', 'gcg'],
   },
 
   /**
@@ -425,7 +416,7 @@ export const MITRE_ATLAS_MAPPING: Record<string, { plugins: Plugin[]; strategies
   },
   'mitre:atlas:reconnaissance': {
     plugins: ['competitors', 'policy', 'prompt-extraction', 'rbac'],
-    strategies: ['multilingual'],
+    strategies: [],
   },
   'mitre:atlas:resource-development': {
     plugins: ['harmful:cybercrime', 'harmful:illegal-drugs', 'harmful:indiscriminate-weapons'],
