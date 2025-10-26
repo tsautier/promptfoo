@@ -1353,10 +1353,10 @@ The Responses API can also be used with Azure OpenAI endpoints by configuring th
 
 ```yaml
 providers:
-  - id: openai:responses:gpt-4.1
+  - id: openai:responses:gpt-4.1 # Uses AZURE_API_KEY env var
     config:
       apiHost: 'your-resource.openai.azure.com'
-      apiKey: '${AZURE_API_KEY}'
+      # apiKey: "{{ env.AZURE_API_KEY }}"  # optional, auto-detected
       temperature: 0.7
       instructions: 'You are a helpful assistant.'
       response_format: file://./response-schema.json
