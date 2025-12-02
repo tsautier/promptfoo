@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import dedent from 'dedent';
 import { globSync } from 'glob';
 import yaml from 'js-yaml';
-import { fromError } from 'zod-validation-error';
+import { fromError } from 'zod-validation-error/v3';
 import { readAssertions } from '../../assertions/index';
 import { validateAssertions } from '../../assertions/validateAssertions';
 import cliState from '../../cliState';
@@ -466,7 +466,7 @@ export async function combineConfigs(configPaths: string[]): Promise<UnifiedConf
       }
 
       const sharingConfig = configs.find((config) => typeof config.sharing === 'object');
-      return sharingConfig ? sharingConfig.sharing : false;
+      return sharingConfig ? sharingConfig.sharing : undefined;
     })(),
     tracing: configs.find((config) => config.tracing)?.tracing,
   };
@@ -561,7 +561,7 @@ export async function resolveConfigs(
     env: fileConfig.env || defaultConfig.env,
     sharing: getEnvBool('PROMPTFOO_DISABLE_SHARING')
       ? false
-      : (fileConfig.sharing ?? defaultConfig.sharing ?? false),
+      : (fileConfig.sharing ?? defaultConfig.sharing),
     defaultTest: processedDefaultTest
       ? await readTest(processedDefaultTest, basePath, true)
       : undefined,
